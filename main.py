@@ -1,5 +1,5 @@
 import ast
-
+import operator
 import itertools
 
 # namespace.var op val : (x for x in namespace if x.var op val)
@@ -86,6 +86,7 @@ class CallGetter(NamespacedGetter):
 
     def __init__(self, parsed_ast):
         try:
+            self.function_name = parsed_ast.func.id
             self.function = self.CALLS_MEANING[parsed_ast.func.id]
         except KeyError:
             raise ValueError(
@@ -98,6 +99,10 @@ class CallGetter(NamespacedGetter):
     def __call__(self, variable_group):
         return self.function(*(arg(variable_group) for arg in self.args))
 
+    def __str__(self):
+        args = ",".join(str(x) for x in self.args)
+        return f"{self.function_name}({args})"
+
 
 class AttributeGetter(NamespacedGetter):
     def __init__(self, parsed_ast):
@@ -106,6 +111,9 @@ class AttributeGetter(NamespacedGetter):
 
     def __call__(self, variable_group):
         return variable_group[self.variable]
+
+    def __str__(self):
+        return f"{self.namespace}.{self.variable}"
 
 
 class ConstantGetter(ValueGetter):
@@ -122,6 +130,9 @@ class ConstantGetter(ValueGetter):
         parsed_ast.operand.value *= -1
         return cls(parsed_ast.operand)
 
+    def __str__(self):
+        return f"{self.value}"
+
 
 class ListGetter(ConstantGetter):
     def __init__(self, parsed_ast):
@@ -132,6 +143,10 @@ class ListGetter(ConstantGetter):
             raise ValueError("Unsupported collection of non-constant values")
         self.value = [value_getter() for value_getter in values_getters]
 
+    def __str__(self):
+        to_r = ", ".join(str(x) for x in self.value)
+        return "[{}]".format(to_r)
+
 
 def getter_from_ast(parsed_ast):
     if isinstance(parsed_ast, ast.Call):
@@ -141,6 +156,8 @@ def getter_from_ast(parsed_ast):
     elif isinstance(parsed_ast, ast.Constant):
         return ConstantGetter(parsed_ast)
     elif isinstance(parsed_ast, ast.List):
+        return ListGetter(parsed_ast)
+    elif isinstance(parsed_ast, ast.Tuple):
         return ListGetter(parsed_ast)
     elif isinstance(parsed_ast, ast.UnaryOp):
         return ConstantGetter.from_unary_op(parsed_ast)
@@ -157,50 +174,30 @@ class CompareConstraint(Constraint):
         return cls(left_getter, parsed_ast.ops[0], right_getter)
 
     def _filtered(self, ns_variables):
-        if isinstance(self.operator, ast.Eq):
-            return (
-                variable_group
-                for variable_group in ns_variables
-                if self.left_getter(variable_group)
-                == self.right_getter(variable_group)
-            )
-        elif isinstance(self.operator, ast.GtE):
-            return (
-                variable_group
-                for variable_group in ns_variables
-                if self.left_getter(variable_group)
-                >= self.right_getter(variable_group)
-            )
-        elif isinstance(self.operator, ast.Gt):
-            return (
-                variable_group
-                for variable_group in ns_variables
-                if self.left_getter(variable_group)
-                > self.right_getter(variable_group)
-            )
-        elif isinstance(self.operator, ast.Lt):
-            return (
-                variable_group
-                for variable_group in ns_variables
-                if self.left_getter(variable_group)
-                < self.right_getter(variable_group)
-            )
-        elif isinstance(self.operator, ast.LtE):
-            return (
-                variable_group
-                for variable_group in ns_variables
-                if self.left_getter(variable_group)
-                <= self.right_getter(variable_group)
-            )
-        elif isinstance(self.operator, ast.In):
-            return (
-                variable_group
-                for variable_group in ns_variables
-                if self.left_getter(variable_group)
-                in self.right_getter(variable_group)
-            )
+        def act_contains(x, y):
+            # contains(a, b) == b in a
+            # so we need to swap them around
+            return operator.contains(y, x)
+        ast_to_operator = {
+            ast.Eq: operator.eq,
+            ast.GtE: operator.ge,
+            ast.Gt: operator.gt,
+            ast.LtE: operator.le,
+            ast.In: act_contains,
+        }
+        try:
+            operator_f = ast_to_operator[type(self.operator)]
+        except KeyError:
+            raise ValueError("Unsupported operator {}".format(self.operator))
 
-        raise ValueError("Unsupported operator {}".format(self.operator))
+        return (
+            variable_group
+            for variable_group in ns_variables
+            if operator_f(
+                self.left_getter(variable_group),
+                self.right_getter(variable_group),
+            )
+        )
 
     def filtered(self, namespaces):
         namespaces = {
@@ -211,6 +208,23 @@ class CompareConstraint(Constraint):
             )
             for (ns_name, ns_value) in namespaces.items()
         }
+        return namespaces
+
+
+class CompareConstraintExplainer(CompareConstraint):
+    def filtered(self, namespaces, max_namespace_items=5):
+        namespace = self.left_getter.namespace
+        print(
+            "Expression:",
+            self.left_getter,
+            ast.dump(self.operator),
+            self.right_getter,
+        )
+        print("Filtering:", namespace)
+        namespaces = super().filtered(namespaces)
+        namespaces[namespace] = list(namespaces[namespace])
+        for filtered in namespaces[namespace][:max_namespace_items]:
+            print(filtered)
         return namespaces
 
 
