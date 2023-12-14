@@ -65,6 +65,7 @@ def test_or_true():
     evaluated = evaluate_lazy(act_eval(expr, namespace))
     assert evaluated == result_bool
 
+
 def test_or_false():
     expr = "namespace.b == 20 or namespace.a == 11"
     namespace = {"namespace": [HD({"a": 1, "b": 2}), HD({"a": 2, "b": 2})]}
@@ -76,6 +77,7 @@ def test_or_false():
 
     evaluated = evaluate_lazy(act_eval(expr, namespace))
     assert evaluated == result_bool
+
 
 def test_gt_true():
     expr = "namespace.a > 1"
@@ -89,6 +91,7 @@ def test_gt_true():
     evaluated = evaluate_lazy(act_eval(expr, namespace))
     assert evaluated == result_bool
 
+
 def test_gt_false():
     expr = "namespace.a > 10"
     namespace = {"namespace": [HD({"a": 1, "b": 2}), HD({"a": 2, "b": 2})]}
@@ -100,6 +103,7 @@ def test_gt_false():
 
     evaluated = evaluate_lazy(act_eval(expr, namespace))
     assert evaluated == result_bool
+
 
 def test_gte():
     expr = "namespace.a >= 1"
@@ -136,6 +140,15 @@ def test_cast_float():
 
 def test_in():
     expr = "namespace.a in ['1', '2']"
+    namespace = {"namespace": [HD(a="1"), HD(a="2"), HD(a="3")]}
+    result = {"namespace": [HD(a="1"), HD(a="2")]}
+
+    evaluated = evaluate(act_eval(expr, namespace))
+    assert evaluated == result
+
+
+def test_in_tuple():
+    expr = "namespace.a in ('1', '2')"
     namespace = {"namespace": [HD(a="1"), HD(a="2"), HD(a="3")]}
     result = {"namespace": [HD(a="1"), HD(a="2")]}
 
