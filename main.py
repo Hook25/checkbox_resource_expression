@@ -2,7 +2,7 @@ import ast
 import operator
 import itertools
 
-# namespace.var op val : (x for x in namespace if x.var op val)
+from copy import copy
 
 
 class HashableDict(dict):
@@ -28,12 +28,11 @@ class Constraint:
         self.right_getter = right_getter
         try:
             self.namespace = self.left_getter.namespace
-        except ast.AttributeError:
+        except AttributeError:
             self.namespace = self.right_getter.namespace
 
     @classmethod
-    def parse_from_ast(cls, parsed):
-        ...
+    def parse_from_ast(cls, parsed): ...
 
 
 class ValueGetter:
@@ -110,7 +109,11 @@ class AttributeGetter(NamespacedGetter):
         self.variable = parsed_ast.attr
 
     def __call__(self, variable_group):
-        return variable_group[self.variable]
+        # resources are free form, support variable names not being unifrom
+        try:
+            return variable_group[self.variable]
+        except KeyError:
+            return None
 
     def __str__(self):
         return f"{self.namespace}.{self.variable}"
@@ -149,19 +152,19 @@ class ListGetter(ConstantGetter):
 
 
 def getter_from_ast(parsed_ast):
-    if isinstance(parsed_ast, ast.Call):
-        return CallGetter(parsed_ast)
-    elif isinstance(parsed_ast, ast.Attribute):
-        return AttributeGetter(parsed_ast)
-    elif isinstance(parsed_ast, ast.Constant):
-        return ConstantGetter(parsed_ast)
-    elif isinstance(parsed_ast, ast.List):
-        return ListGetter(parsed_ast)
-    elif isinstance(parsed_ast, ast.Tuple):
-        return ListGetter(parsed_ast)
-    elif isinstance(parsed_ast, ast.UnaryOp):
-        return ConstantGetter.from_unary_op(parsed_ast)
-    raise ValueError("Unsupported name/value {}".format(parsed_ast))
+    getters = {
+        ast.Call: CallGetter,
+        ast.Attribute: AttributeGetter,
+        ast.Constant: ConstantGetter,
+        ast.List: ListGetter,
+        ast.Tuple: ListGetter,
+        ast.UnaryOp: ConstantGetter.from_unary_op,
+    }
+    try:
+        getter = getters[type(parsed_ast)]
+    except KeyError:
+        raise ValueError("Unsupported name/value {}".format(parsed_ast))
+    return getter(parsed_ast)
 
 
 class CompareConstraint(Constraint):
@@ -178,12 +181,18 @@ class CompareConstraint(Constraint):
             # contains(a, b) == b in a
             # so we need to swap them around
             return operator.contains(y, x)
+
+        def act_not_contains(x, y):
+            return not act_contains(x, y)
+
         ast_to_operator = {
             ast.Eq: operator.eq,
+            ast.NotEq: operator.ne,
             ast.GtE: operator.ge,
             ast.Gt: operator.gt,
             ast.LtE: operator.le,
             ast.In: act_contains,
+            ast.NotIn: act_not_contains,
         }
         try:
             operator_f = ast_to_operator[type(self.operator)]
@@ -200,14 +209,9 @@ class CompareConstraint(Constraint):
         )
 
     def filtered(self, namespaces):
-        namespaces = {
-            ns_name: (
-                ns_value
-                if ns_name != self.namespace
-                else self._filtered(ns_value)
-            )
-            for (ns_name, ns_value) in namespaces.items()
-        }
+        if self.namespace not in namespaces:
+            return namespaces
+        namespaces[self.namespace] = self._filtered(namespaces[self.namespace])
         return namespaces
 
 
@@ -245,19 +249,28 @@ def namespace_union(ns1, ns2):
     }
 
 
+def duplicate_namespace(namespace):
+    duplicated_namespace = {
+        x: itertools.tee(y, 2) for (x, y) in namespace.items()
+    }
+    ns1 = {x: y[0] for x, y in duplicated_namespace.items()}
+    ns2 = {x: y[1] for x, y in duplicated_namespace.items()}
+    return ns1, ns2
+
+
 def eval_bool_op(bool_op, namespace):
     if isinstance(bool_op.op, ast.And):
         left_filtered = act_eval(bool_op.values[0], namespace)
         return act_eval(bool_op.values[1], left_filtered)
     elif isinstance(bool_op.op, ast.Or):
-        left_filtered = act_eval(bool_op.values[0], namespace)
-        right_filtered = act_eval(bool_op.values[1], namespace)
+        ns1, ns2 = duplicate_namespace(namespace)
+        left_filtered = act_eval(bool_op.values[0], ns1)
+        right_filtered = act_eval(bool_op.values[1], ns2)
         return namespace_union(left_filtered, right_filtered)
     raise ValueError("Unsupported bool operator {}".format(namespace))
 
 
-def act_eval(expr, namespace):
-    parsed_expr = ast.parse(expr, mode="eval")
+def act_eval(parsed_expr, namespace):
     # print(ast.dump(parsed_expr, indent=4))
 
     to_eval = [parsed_expr]
@@ -276,6 +289,11 @@ def act_eval(expr, namespace):
     ...
 
 
+def prepare_eval_parse(expr, namespace):
+    parsed_expr = ast.parse(expr, mode="eval")
+    return act_eval(parsed_expr, copy(namespace))
+
+
 def evaluate_lazy(namespace):
     def any_next(iterable):
         try:
@@ -284,11 +302,11 @@ def evaluate_lazy(namespace):
         except StopIteration:
             return False
 
-    any_next_ns = {
-        namespace_name: any_next(x for x in zz)
+    """any_next_ns = {
+        namespace_name: any_next(zz)
         for (namespace_name, zz) in namespace.items()
-    }
-    return all(any_next_ns.values())
+    }"""
+    return all(any_next(iter(v)) for v in namespace.values())
 
 
 def evaluate(namespace):

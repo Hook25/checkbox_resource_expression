@@ -1,4 +1,4 @@
-from main import HD, act_eval, evaluate, evaluate_lazy
+from main import HD, prepare_eval_parse, evaluate, evaluate_lazy
 
 
 def test_equal_true():
@@ -7,10 +7,10 @@ def test_equal_true():
     result = {"namespace": [HD({"a": 1, "b": 2})]}
     result_bool = True
 
-    evaluated = evaluate(act_eval(expr, namespace))
+    evaluated = evaluate(prepare_eval_parse(expr, namespace))
     assert evaluated == result
 
-    evaluated = evaluate_lazy(act_eval(expr, namespace))
+    evaluated = evaluate_lazy(prepare_eval_parse(expr, namespace))
     assert evaluated == result_bool
 
 
@@ -20,10 +20,10 @@ def test_equal_false():
     result = {"namespace": []}
     result_bool = False
 
-    evaluated = evaluate(act_eval(expr, namespace))
+    evaluated = evaluate(prepare_eval_parse(expr, namespace))
     assert evaluated == result
 
-    evaluated = evaluate_lazy(act_eval(expr, namespace))
+    evaluated = evaluate_lazy(prepare_eval_parse(expr, namespace))
     assert evaluated == result_bool
 
 
@@ -33,10 +33,10 @@ def test_and_true():
     result = {"namespace": [HD({"a": 1, "b": 2})]}
     result_bool = True
 
-    evaluated = evaluate(act_eval(expr, namespace))
+    evaluated = evaluate(prepare_eval_parse(expr, namespace))
     assert evaluated == result
 
-    evaluated = evaluate_lazy(act_eval(expr, namespace))
+    evaluated = evaluate_lazy(prepare_eval_parse(expr, namespace))
     assert evaluated == result_bool
 
 
@@ -46,10 +46,10 @@ def test_and_false():
     result = {"namespace": []}
     result_bool = False
 
-    evaluated = evaluate(act_eval(expr, namespace))
+    evaluated = evaluate(prepare_eval_parse(expr, namespace))
     assert evaluated == result
 
-    evaluated = evaluate_lazy(act_eval(expr, namespace))
+    evaluated = evaluate_lazy(prepare_eval_parse(expr, namespace))
     assert evaluated == result_bool
 
 
@@ -59,10 +59,22 @@ def test_or_true():
     result = {"namespace": [HD({"a": 1, "b": 2}), HD({"a": 2, "b": 2})]}
     result_bool = True
 
-    evaluated = evaluate(act_eval(expr, namespace))
+    evaluated = evaluate(prepare_eval_parse(expr, namespace))
     assert evaluated == result
 
-    evaluated = evaluate_lazy(act_eval(expr, namespace))
+    evaluated = evaluate_lazy(prepare_eval_parse(expr, namespace))
+    assert evaluated == result_bool
+
+def test_or_true_regression():
+    expr = "namespace.a == 1 and (namespace.b == -2 or namespace.a == 1)"
+    namespace = {"namespace": [HD({"a": 1, "b": 2}), HD({"a": 2, "b": 2})]}
+    result = {"namespace": [HD({"a": 1, "b": 2})]}
+    result_bool = True
+
+    evaluated = evaluate(prepare_eval_parse(expr, namespace))
+    assert evaluated == result
+
+    evaluated = evaluate_lazy(prepare_eval_parse(expr, namespace))
     assert evaluated == result_bool
 
 
@@ -72,10 +84,10 @@ def test_or_false():
     result = {"namespace": []}
     result_bool = False
 
-    evaluated = evaluate(act_eval(expr, namespace))
+    evaluated = evaluate(prepare_eval_parse(expr, namespace))
     assert evaluated == result
 
-    evaluated = evaluate_lazy(act_eval(expr, namespace))
+    evaluated = evaluate_lazy(prepare_eval_parse(expr, namespace))
     assert evaluated == result_bool
 
 
@@ -85,10 +97,10 @@ def test_gt_true():
     result = {"namespace": [HD({"a": 2, "b": 2})]}
     result_bool = True
 
-    evaluated = evaluate(act_eval(expr, namespace))
+    evaluated = evaluate(prepare_eval_parse(expr, namespace))
     assert evaluated == result
 
-    evaluated = evaluate_lazy(act_eval(expr, namespace))
+    evaluated = evaluate_lazy(prepare_eval_parse(expr, namespace))
     assert evaluated == result_bool
 
 
@@ -98,10 +110,10 @@ def test_gt_false():
     result = {"namespace": []}
     result_bool = False
 
-    evaluated = evaluate(act_eval(expr, namespace))
+    evaluated = evaluate(prepare_eval_parse(expr, namespace))
     assert evaluated == result
 
-    evaluated = evaluate_lazy(act_eval(expr, namespace))
+    evaluated = evaluate_lazy(prepare_eval_parse(expr, namespace))
     assert evaluated == result_bool
 
 
@@ -112,7 +124,7 @@ def test_gte():
     }
     result = {"namespace": [HD({"a": 1, "b": 2}), HD({"a": 2, "b": 2})]}
 
-    evaluated = evaluate(act_eval(expr, namespace))
+    evaluated = evaluate(prepare_eval_parse(expr, namespace))
     assert evaluated == result
 
 
@@ -123,7 +135,7 @@ def test_cast_int():
     }
     result = {"namespace": [HD({"a": "1", "b": "2"})]}
 
-    evaluated = evaluate(act_eval(expr, namespace))
+    evaluated = evaluate(prepare_eval_parse(expr, namespace))
     assert evaluated == result
 
 
@@ -134,7 +146,7 @@ def test_cast_float():
     }
     result = {"namespace": [HD({"a": "1", "b": "2"})]}
 
-    evaluated = evaluate(act_eval(expr, namespace))
+    evaluated = evaluate(prepare_eval_parse(expr, namespace))
     assert evaluated == result
 
 
@@ -143,7 +155,7 @@ def test_in():
     namespace = {"namespace": [HD(a="1"), HD(a="2"), HD(a="3")]}
     result = {"namespace": [HD(a="1"), HD(a="2")]}
 
-    evaluated = evaluate(act_eval(expr, namespace))
+    evaluated = evaluate(prepare_eval_parse(expr, namespace))
     assert evaluated == result
 
 
@@ -152,5 +164,5 @@ def test_in_tuple():
     namespace = {"namespace": [HD(a="1"), HD(a="2"), HD(a="3")]}
     result = {"namespace": [HD(a="1"), HD(a="2")]}
 
-    evaluated = evaluate(act_eval(expr, namespace))
+    evaluated = evaluate(prepare_eval_parse(expr, namespace))
     assert evaluated == result
