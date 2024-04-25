@@ -1,6 +1,7 @@
 import ast
 import operator
 import itertools
+import functools
 
 from copy import copy
 
@@ -225,10 +226,19 @@ class CompareConstraintExplainer(CompareConstraint):
             self.right_getter,
         )
         print("Filtering:", namespace)
-        namespaces = super().filtered(namespaces)
+        print("Pre filter: ")
         namespaces[namespace] = list(namespaces[namespace])
         for filtered in namespaces[namespace][:max_namespace_items]:
             print(filtered)
+        if len(namespaces[namespace]) > max_namespace_items:
+            print("...")
+        namespaces = super().filtered(namespaces)
+        print("Post filter: ")
+        namespaces[namespace] = list(namespaces[namespace])
+        for filtered in namespaces[namespace][:max_namespace_items]:
+            print(filtered)
+        if len(namespaces[namespace]) > max_namespace_items:
+            print("...")
         return namespaces
 
 
@@ -249,29 +259,36 @@ def namespace_union(ns1, ns2):
     }
 
 
-def duplicate_namespace(namespace):
+def duplicate_namespace(namespace, count):
     duplicated_namespace = {
-        x: itertools.tee(y, 2) for (x, y) in namespace.items()
+        x: itertools.tee(y, count) for (x, y) in namespace.items()
     }
-    ns1 = {x: y[0] for x, y in duplicated_namespace.items()}
-    ns2 = {x: y[1] for x, y in duplicated_namespace.items()}
-    return ns1, ns2
+    namespaces = [
+        {key: duplicated_namespace[key][i] for key in duplicated_namespace}
+        for i in range(count)
+    ]
+    return namespaces
 
 
 def eval_bool_op(bool_op, namespace):
     if isinstance(bool_op.op, ast.And):
-        left_filtered = act_eval(bool_op.values[0], namespace)
-        return act_eval(bool_op.values[1], left_filtered)
+        for constraint in bool_op.values:
+            namespace = act_eval(constraint, namespace)
+        return namespace
     elif isinstance(bool_op.op, ast.Or):
-        ns1, ns2 = duplicate_namespace(namespace)
-        left_filtered = act_eval(bool_op.values[0], ns1)
-        right_filtered = act_eval(bool_op.values[1], ns2)
-        return namespace_union(left_filtered, right_filtered)
+        duplicated_namespaces = duplicate_namespace(
+            namespace, len(bool_op.values)
+        )
+        ns_constraint = list(zip(duplicated_namespaces, bool_op.values))
+        filtered_namespaces = (
+            act_eval(constraint, namespace)
+            for namespace, constraint in ns_constraint
+        )
+        return functools.reduce(namespace_union, filtered_namespaces)
     raise ValueError("Unsupported bool operator {}".format(namespace))
 
 
 def act_eval(parsed_expr, namespace):
-    # print(ast.dump(parsed_expr, indent=4))
 
     to_eval = [parsed_expr]
 
@@ -280,7 +297,7 @@ def act_eval(parsed_expr, namespace):
         if isinstance(curr, ast.Expression):
             to_eval.append(curr.body)
         elif isinstance(curr, ast.Compare):  # assume compare is a leaf
-            cc = CompareConstraint.parse_from_ast(curr)
+            cc = CompareConstraintExplainer.parse_from_ast(curr)
             return cc.filtered(namespace)
         elif isinstance(curr, ast.BoolOp):
             return eval_bool_op(curr, namespace)
@@ -291,6 +308,7 @@ def act_eval(parsed_expr, namespace):
 
 def prepare_eval_parse(expr, namespace):
     parsed_expr = ast.parse(expr, mode="eval")
+    print(ast.dump(parsed_expr, indent=4))
     return act_eval(parsed_expr, copy(namespace))
 
 

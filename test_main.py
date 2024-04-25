@@ -166,3 +166,27 @@ def test_in_tuple():
 
     evaluated = evaluate(prepare_eval_parse(expr, namespace))
     assert evaluated == result
+
+def test_neq_true():
+    expr = "namespace.a != '1'"
+    namespace = {"namespace": [HD(a="1"), HD(a="2"), HD(a="3")]}
+    result = {"namespace": [HD(a="2"), HD(a="3")]}
+
+    evaluated = evaluate(prepare_eval_parse(expr, namespace))
+    assert evaluated == result
+
+def test_neq_false():
+    expr = "namespace.a != '1' and namespace.a != '2' and namespace.a != '3'"
+    namespace = {"namespace": [HD(a="1"), HD(a="2")]}
+    result = {"namespace": []}
+
+    evaluated = evaluate(prepare_eval_parse(expr, namespace))
+    assert evaluated == result
+
+def test_multiple_or():
+    expr = "namespace.a == '1' or namespace.a == '2' or namespace.a == '3'"
+    namespace = {"namespace": [HD(a="1"), HD(a="2"), HD(a="3")]}
+    result = {"namespace": [HD(a="1"), HD(a="2"), HD(a="3")]}
+
+    evaluated = evaluate(prepare_eval_parse(expr, namespace))
+    assert evaluated == result
